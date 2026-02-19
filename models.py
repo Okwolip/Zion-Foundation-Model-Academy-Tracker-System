@@ -208,9 +208,6 @@ def total_revenue():
 # =========================================================
 
 def set_fee(section, term, session, total_fee):
-    """
-    Set or update school fee for a section in a term/session
-    """
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -252,9 +249,6 @@ def set_fee(section, term, session, total_fee):
 
 
 def get_current_fee(section, term, session):
-    """
-    Get fee for a section in a specific term/session
-    """
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -301,15 +295,11 @@ def get_total_paid(student_id, term, session):
 
 
 def get_previous_outstanding(student_id, current_session):
-    """
-    Outstanding balance from previous sessions
-    """
 
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
-        # Get student section
         cursor.execute("""
             SELECT section
             FROM students
@@ -322,7 +312,6 @@ def get_previous_outstanding(student_id, current_session):
 
         section = student[0]
 
-        # Get all previous sessions
         cursor.execute("""
             SELECT DISTINCT session
             FROM fees
@@ -335,7 +324,6 @@ def get_previous_outstanding(student_id, current_session):
         for sess in sessions:
             session_name = sess[0]
 
-            # Total fee for that session
             cursor.execute("""
                 SELECT SUM(total_fee)
                 FROM fees
@@ -344,7 +332,6 @@ def get_previous_outstanding(student_id, current_session):
             """, (section, session_name))
             total_fee = cursor.fetchone()[0] or 0
 
-            # Total paid in that session
             cursor.execute("""
                 SELECT SUM(amount_paid)
                 FROM payments
@@ -363,14 +350,10 @@ def get_previous_outstanding(student_id, current_session):
 
 
 # =========================================================
-# SESSION PROMOTION / ROLLOVER
+# SESSION PROMOTION
 # =========================================================
 
 def rollover_outstanding(new_session):
-    """
-    Processes outstanding balances when a new session starts.
-    Currently recalculates outstanding but does not modify records.
-    """
 
     conn = get_connection()
     cursor = conn.cursor()
