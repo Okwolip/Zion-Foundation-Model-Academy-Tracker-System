@@ -33,112 +33,124 @@ def create_tables():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # ---------------------------------------------------
-    # STUDENTS TABLE
-    # ---------------------------------------------------
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS students (
-        student_id TEXT PRIMARY KEY,
-        first_name TEXT NOT NULL,
-        last_name TEXT NOT NULL,
-        gender TEXT,
-        section TEXT NOT NULL,      -- Nursery / Primary / Secondary
-        class TEXT NOT NULL,
-        parent_phone TEXT,
-        admission_date TEXT,
-        status TEXT DEFAULT 'Active'
-    );
-    """)
+    try:
+        # ---------------------------------------------------
+        # STUDENTS TABLE
+        # ---------------------------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS students (
+            student_id TEXT PRIMARY KEY,
+            first_name TEXT NOT NULL,
+            last_name TEXT NOT NULL,
+            gender TEXT,
+            section TEXT NOT NULL,
+            class TEXT NOT NULL,
+            parent_phone TEXT,
+            admission_date TEXT,
+            status TEXT DEFAULT 'Active'
+        );
+        """)
 
-    # ---------------------------------------------------
-    # FEES TABLE
-    # One fee per section per term per session
-    # ---------------------------------------------------
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS fees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        section TEXT NOT NULL,
-        term TEXT NOT NULL,
-        session TEXT NOT NULL,
-        total_fee REAL NOT NULL,
-        UNIQUE(section, term, session)
-    );
-    """)
+        # ---------------------------------------------------
+        # FEES TABLE
+        # ---------------------------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS fees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL,
+            term TEXT NOT NULL,
+            session TEXT NOT NULL,
+            total_fee REAL NOT NULL,
+            UNIQUE(section, term, session)
+        );
+        """)
 
-    # ---------------------------------------------------
-    # PAYMENTS TABLE
-    # ---------------------------------------------------
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS payments (
-        payment_id TEXT PRIMARY KEY,
-        student_id TEXT NOT NULL,
-        term TEXT NOT NULL,
-        session TEXT NOT NULL,
-        amount_paid REAL NOT NULL CHECK(amount_paid >= 0),
-        payment_date TEXT NOT NULL,
-        FOREIGN KEY (student_id)
-        REFERENCES students(student_id)
-        ON DELETE CASCADE
-    );
-    """)
+        # ---------------------------------------------------
+        # PAYMENTS TABLE
+        # ---------------------------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payments (
+            payment_id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL,
+            term TEXT NOT NULL,
+            session TEXT NOT NULL,
+            amount_paid REAL NOT NULL CHECK(amount_paid >= 0),
+            payment_date TEXT NOT NULL,
+            FOREIGN KEY (student_id)
+            REFERENCES students(student_id)
+            ON DELETE CASCADE
+        );
+        """)
 
-    # ---------------------------------------------------
-    # OUTSTANDING BALANCE TABLE
-    # This stores carry-over balances automatically
-    # ---------------------------------------------------
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS outstanding_balances (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id TEXT NOT NULL,
-        session TEXT NOT NULL,
-        amount REAL NOT NULL,
-        UNIQUE(student_id, session),
-        FOREIGN KEY (student_id)
-        REFERENCES students(student_id)
-        ON DELETE CASCADE
-    );
-    """)
+        # ---------------------------------------------------
+        # OUTSTANDING BALANCES
+        # ---------------------------------------------------
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS outstanding_balances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id TEXT NOT NULL,
+            session TEXT NOT NULL,
+            amount REAL NOT NULL,
+            UNIQUE(student_id, session),
+            FOREIGN KEY (student_id)
+            REFERENCES students(student_id)
+            ON DELETE CASCADE
+        );
+        """)
 
-    # ---------------------------------------------------
-    # INDEXES (Improve Performance)
-    # ---------------------------------------------------
-    cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_payment_student
-    ON payments(student_id);
-    """)
+        # ---------------------------------------------------
+        # INDEXES (Performance)
+        # ---------------------------------------------------
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payment_student
+        ON payments(student_id);
+        """)
 
-    cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_payment_session
-    ON payments(session);
-    """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_payment_session
+        ON payments(session);
+        """)
 
-    cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_fee_lookup
-    ON fees(section, term, session);
-    """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_fee_lookup
+        ON fees(section, term, session);
+        """)
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_student_section
+        ON students(section);
+        """)
+
+        conn.commit()
+
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------
-# RESET DATABASE (FOR TESTING ONLY)
+# RESET DATABASE (FOR DEVELOPMENT ONLY)
 # ---------------------------------------------------
 
 def reset_database():
     """
     Deletes all tables and recreates them.
-    Use ONLY during development.
+    Use only during development/testing.
     """
+
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("DROP TABLE IF EXISTS payments")
-    cursor.execute("DROP TABLE IF EXISTS fees")
-    cursor.execute("DROP TABLE IF EXISTS students")
-    cursor.execute("DROP TABLE IF EXISTS outstanding_balances")
+    try:
+        # Drop dependent tables first
+        cursor.execute("DROP TABLE IF EXISTS payments")
+        cursor.execute("DROP TABLE IF EXISTS outstanding_balances")
+        cursor.execute("DROP TABLE IF EXISTS fees")
+        cursor.execute("DROP TABLE IF EXISTS students")
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
+    finally:
+        conn.close()
+
+    # Recreate tables
     create_tables()

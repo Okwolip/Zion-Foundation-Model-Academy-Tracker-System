@@ -50,7 +50,7 @@ if menu == "Dashboard":
 
 
 # ==================================================
-# ADD / MANAGE STUDENTS
+# MANAGE STUDENTS
 # ==================================================
 elif menu == "Manage Students":
 
@@ -66,21 +66,21 @@ elif menu == "Manage Students":
     status = st.selectbox("Status", ["Active", "Inactive"])
 
     if st.button("Add Student"):
-        if first_name and last_name:
+        if first_name.strip() and last_name.strip():
             add_student(
-                first_name,
-                last_name,
+                first_name.strip(),
+                last_name.strip(),
                 gender,
                 section,
-                student_class,
-                parent_phone,
+                student_class.strip(),
+                parent_phone.strip(),
                 str(admission_date),
                 status
             )
             st.success("Student added successfully!")
             st.rerun()
         else:
-            st.warning("Enter student name.")
+            st.warning("Please enter student first and last name.")
 
     st.subheader("All Students")
 
@@ -92,9 +92,9 @@ elif menu == "Manage Students":
             "Section", "Class", "Phone", "Admission Date", "Status"
         ])
         student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
-        st.dataframe(student_df)
+        st.dataframe(student_df, use_container_width=True)
     else:
-        st.info("No students yet.")
+        st.info("No students found.")
 
 
 # ==================================================
@@ -107,7 +107,7 @@ elif menu == "Payments":
     students = get_all_students()
 
     if not students:
-        st.warning("No students available.")
+        st.warning("Please add students first.")
     else:
 
         student_df = pd.DataFrame(students, columns=[
@@ -123,28 +123,31 @@ elif menu == "Payments":
 
         student_id = student_row["ID"]
         section = student_row["Section"]
+        student_class = student_row["Class"]
 
-        term = st.selectbox("Term", ["1st", "2nd", "3rd"])
-        session = st.text_input("Session (example: 2024/2025)")
+        term = st.selectbox("Term", ["1st", "2nd", "3rd"], key="payment_term")
+        session = st.text_input("Session (Example: 2024/2025)", key="payment_session")
 
         if session:
 
-            # Accounting logic
             previous_outstanding = get_previous_outstanding(student_id, session)
             current_fee = get_current_fee(section, term, session)
             total_paid = get_total_paid(student_id, term, session)
 
             amount_owed = (previous_outstanding + current_fee) - total_paid
 
-            st.markdown("### Financial Summary")
+            st.subheader("Financial Summary")
 
             col1, col2 = st.columns(2)
 
             col1.metric("Previous Outstanding", f"₦{previous_outstanding:,.2f}")
-            col1.metric("Current Fee", f"₦{current_fee:,.2f}")
+            col1.metric("Current Term Fee", f"₦{current_fee:,.2f}")
 
-            col2.metric("Total Paid", f"₦{total_paid:,.2f}")
+            col2.metric("Total Paid This Term", f"₦{total_paid:,.2f}")
             col2.metric("Amount Owed", f"₦{amount_owed:,.2f}")
+
+            if current_fee == 0:
+                st.warning("Fee has not been set for this section, term, and session.")
 
             st.divider()
 
@@ -155,15 +158,18 @@ elif menu == "Payments":
             payment_date = st.date_input("Payment Date")
 
             if st.button("Save Payment"):
-                add_payment(
-                    student_id,
-                    term,
-                    session,
-                    amount,
-                    str(payment_date)
-                )
-                st.success("Payment recorded successfully.")
-                st.rerun()
+                if amount > 0:
+                    add_payment(
+                        student_id,
+                        term,
+                        session,
+                        amount,
+                        str(payment_date)
+                    )
+                    st.success("Payment recorded successfully.")
+                    st.rerun()
+                else:
+                    st.warning("Enter payment amount.")
 
             st.divider()
 
@@ -182,22 +188,25 @@ elif menu == "Payments":
                     "Date"
                 ])
 
-                student_payments = payment_df[payment_df["Student ID"] == student_id]
-                st.dataframe(student_payments)
+                student_payments = payment_df[
+                    payment_df["Student ID"] == student_id
+                ]
+
+                st.dataframe(student_payments, use_container_width=True)
             else:
-                st.info("No payment history.")
+                st.info("No payments recorded yet.")
 
             st.divider()
 
-            # PDF GENERATION
-            st.subheader("Generate Student Statement")
+            # Generate Statement
+            st.subheader("Generate Student Financial Statement")
 
             if st.button("Generate PDF Statement"):
 
                 file_path = generate_student_statement(
                     selected_name,
                     section,
-                    student_row["Class"],
+                    student_class,
                     session,
                     previous_outstanding,
                     current_fee,
@@ -221,26 +230,32 @@ elif menu == "Fee Management":
 
     st.header("Set School Fees")
 
-    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
-    term = st.selectbox("Term", ["1st", "2nd", "3rd"])
-    session = st.text_input("Session (example: 2024/2025)")
+    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"], key="fee_section")
+    term = st.selectbox("Term", ["1st", "2nd", "3rd"], key="fee_term")
+    session = st.text_input("Session (Example: 2024/2025)", key="fee_session")
     fee = st.number_input("Fee Amount", min_value=0.0)
 
     if st.button("Save Fee"):
-        set_fee(section, term, session, fee)
-        st.success("Fee saved successfully.")
-        st.rerun()
+        if session:
+            set_fee(section, term, session, fee)
+            st.success("School fee updated successfully.")
+            st.rerun()
+        else:
+            st.warning("Enter session.")
 
 
 # ==================================================
-# PROMOTE SESSION (AUTO ROLLOVER)
+# PROMOTE SESSION
 # ==================================================
 elif menu == "Promote Session":
 
-    st.header("Promote to New Session")
+    st.header("Promote Students to New Session")
 
     new_session = st.text_input("Enter New Session")
 
     if st.button("Roll Over Outstanding Balances"):
-        rollover_outstanding(new_session)
-        st.success("Students promoted and outstanding balances rolled over.")
+        if new_session:
+            rollover_outstanding(new_session)
+            st.success("Outstanding balances successfully rolled over.")
+        else:
+            st.warning("Enter new session.")
