@@ -31,10 +31,11 @@ menu = st.sidebar.selectbox(
         "Payments",
         "Fee Management",
         "Promote Session"
-    ]
+    ],
+    key="main_menu"
 )
 
-st.title("Smart School Record Tracker")
+st.title("Zion Foundation Model Academy")
 
 # ==================================================
 # DASHBOARD
@@ -58,7 +59,7 @@ elif menu == "Manage Students":
 
     first_name = st.text_input("First Name")
     last_name = st.text_input("Last Name")
-    gender = st.selectbox("Gender", ["Male", "Female"])
+    gender = st.selectbox("Gender", ["Male", "Female"], key="gender_select")
     section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
     student_class = st.text_input("Class")
     parent_phone = st.text_input("Parent Phone")
@@ -117,7 +118,11 @@ elif menu == "Payments":
 
         student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
 
-        selected_name = st.selectbox("Select Student", student_df["Name"])
+        selected_name = st.selectbox(
+    "Select Student",
+    student_df["Name"],
+    key="payment_student"
+)
 
         student_row = student_df[student_df["Name"] == selected_name].iloc[0]
 
@@ -259,3 +264,25 @@ elif menu == "Promote Session":
             st.success("Outstanding balances successfully rolled over.")
         else:
             st.warning("Enter new session.")
+            
+import pandas as pd
+import streamlit as st
+from database import create_tables
+from models import (
+    add_student,
+    get_all_students,
+    add_payment,
+    get_payments,
+    total_students,
+    total_revenue,
+    set_fee,
+    get_current_fee,
+    get_total_paid,
+    get_previous_outstanding,
+    rollover_outstanding
+)
+from pdf_report import generate_student_statement
+
+# Initialize database
+create_tables()
+
