@@ -1,8 +1,19 @@
+import streamlit as st
+import pandas as pd
+import sqlite3
+
+# -------------------------------------------------
+# PAGE CONFIG (must be first Streamlit command)
+# -------------------------------------------------
 st.set_page_config(
     page_title="School Management System",
     page_icon="🏫",
     layout="wide"
 )
+
+# -------------------------------------------------
+# UI Styling
+# -------------------------------------------------
 st.markdown("""
 <style>
 .main {
@@ -13,25 +24,13 @@ h1, h2, h3 {
 }
 </style>
 """, unsafe_allow_html=True)
-import sqlite3
 
-def check_login(username, password):
-    conn = sqlite3.connect("school.db")
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "SELECT name, role FROM users WHERE username=? AND password=?",
-        (username, password)
-    )
-
-    user = cursor.fetchone()
-    conn.close()
-
-    return user
-
-import pandas as pd
-import streamlit as st
-from database import create_tables
+# -------------------------------------------------
+# IMPORT PROJECT FILES
+# -------------------------------------------------
+from database import create_tables, create_default_admin
+create_tables()
+create_default_admin()
 from models import (
     add_student,
     get_all_students,
@@ -48,17 +47,54 @@ from models import (
 )
 from pdf_report import generate_student_statement
 
-# Initialize database
+# -------------------------------------------------
+# INITIALIZE DATABASE
+# -------------------------------------------------
 create_tables()
-from database import create_default_admin
 create_default_admin()
 
-# -------------------------------
-# SIDEBAR NAVIGATION
-# -------------------------------
+# -------------------------------------------------
+# LOGIN FUNCTION
+# -------------------------------------------------
+#def check_login(username, password):
+    #import sqlite3
+
+    #conn = sqlite3.connect("school.db")
+    #cursor = conn.cursor()
+    import streamlit as st
+    from sqlalchemy import create_engine, text
+
+    DATABASE_URL = st.secrets["DATABASE_URL"]
+
+    engine = create_engine(DATABASE_URL)
+    conn = engine.connect()
+
+
+ def check_login(username, password):
+    query = text("SELECT * FROM users WHERE username=:username AND password=:password")
+    result = conn.execute(query, {"username": username, "password": password}).fetchone()
+    return result
+
+#    cursor.execute(
+#        "SELECT username, role FROM users WHERE username=? AND password=?",
+#        (username, password)
+#    )
+#
+#    user = cursor.fetchone()
+#    conn.close()
+
+ #   return user
+
+
+# -------------------------------------------------
+# SESSION STATE
+# -------------------------------------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
+# -------------------------------------------------
+# LOGIN PAGE
+# -------------------------------------------------
 if not st.session_state.logged_in:
 
     st.title("School Management System Login")
@@ -80,7 +116,11 @@ if not st.session_state.logged_in:
 
     st.stop()
 
+# -------------------------------------------------
+# SIDEBAR
+# -------------------------------------------------
 st.sidebar.title("Navigation")
+
 menu = st.sidebar.selectbox(
     "Menu",
     [
@@ -93,8 +133,6 @@ menu = st.sidebar.selectbox(
     key="main_menu"
 )
 
-st.title("Zion Foundation Model Academy")
-
 st.sidebar.write(f"Logged in as: {st.session_state.name}")
 st.sidebar.write(f"Role: {st.session_state.role}")
 
@@ -102,15 +140,16 @@ if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.rerun()
 
-# ==================================================
+st.title("Zion Foundation Model Academy")
+
+# =================================================
 # DASHBOARD
-# ==================================================
+# =================================================
 if menu == "Dashboard":
 
     st.header("School Overview")
 
-    # Select session
-    session = st.text_input("Enter Session to View Revenue (Example: 2024/2025)")
+    session = st.text_input("Enter Session (Example: 2024/2025)")
 
     col1, col2 = st.columns(2)
 
@@ -118,25 +157,20 @@ if menu == "Dashboard":
 
     if session:
         revenue = total_revenue(session)
-        col2.metric(
-            f"Revenue for {session}",
-            f"₦{revenue:,.2f}"
-        )
+        col2.metric(f"Revenue for {session}", f"₦{revenue:,.2f}")
     else:
-        col2.metric(
-            "Revenue (Enter Session)",
-            "₦0.00"
-        )
-# ==================================================
+        col2.metric("Revenue", "Enter Session")
+
+# =================================================
 # MANAGE STUDENTS
-# ==================================================
+# =================================================
 elif menu == "Manage Students":
 
     st.header("Add New Student")
 
     first_name = st.text_input("First Name")
     last_name = st.text_input("Last Name")
-    gender = st.selectbox("Gender", ["Male", "Female"], key="gender_select")
+    gender = st.selectbox("Gender", ["Male", "Female"])
     section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
     student_class = st.text_input("Class")
     parent_phone = st.text_input("Parent Phone")
@@ -144,149 +178,171 @@ elif menu == "Manage Students":
     status = st.selectbox("Status", ["Active", "Inactive"])
 
     if st.button("Add Student"):
-        if first_name.strip() and last_name.strip():
+        if first_name and last_name:
             add_student(
-                first_name.strip(),
-                last_name.strip(),
+                first_name,
+                last_name,
                 gender,
                 section,
-                student_class.strip(),
-                parent_phone.strip(),
+                student_class,
+                parent_phone,
                 str(admission_date),
                 status
             )
-            st.success("Student added successfully!")
+            st.success("Student added successfully")
             st.rerun()
-        else:
-            st.warning("Please enter student first and last name.")
 
     st.divider()
-    st.subheader("All Students")
+    st.subheader("Students List")
 
     students = get_all_students()
 
     if students:
-        student_df = pd.DataFrame(students, columns=[
-            "ID", "First Name", "Last Name", "Gender",
-            "Section", "Class", "Phone", "Admission Date", "Status"
+        df = pd.DataFrame(students, columns=[
+            "ID","First Name","Last Name","Gender",
+            "Section","Class","Phone","Admission Date","Status"
         ])
 
-        student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
+        df["Name"] = df["First Name"] + " " + df["Last Name"]
 
-        for index, row in student_df.iterrows():
-            col1, col2, col3, col4 = st.columns([3,2,2,1])
+        for _, row in df.iterrows():
+            col1, col2, col3, col4 = st.columns([4,2,2,1])
 
-            with col1:
-                st.write(f"**{row['Name']}**")
+            col1.write(row["Name"])
+            col2.write(row["Class"])
+            col3.write(row["Section"])
 
-            with col2:
-                st.write(row["Class"])
+            if col4.button("Delete", key=row["ID"]):
+                st.session_state.delete_id = row["ID"]
 
-            with col3:
-                st.write(row["Section"])
-
-            with col4:
-                if st.button("Delete", key=f"del_{row['ID']}"):
-                    st.session_state["delete_id"] = row["ID"]
-
-        # Confirmation warning
         if "delete_id" in st.session_state:
-            st.warning("Are you sure you want to permanently delete this student?")
+            st.warning("Confirm delete student")
 
-            col1, col2 = st.columns(2)
+            c1, c2 = st.columns(2)
 
-            with col1:
-                if st.button("Yes, Delete"):
-                    delete_student(st.session_state["delete_id"])
-                    st.success("Student deleted successfully.")
-                    del st.session_state["delete_id"]
-                    st.rerun()
+            if c1.button("Yes Delete"):
+                delete_student(st.session_state.delete_id)
+                del st.session_state.delete_id
+                st.success("Student deleted")
+                st.rerun()
 
-            with col2:
-                if st.button("Cancel"):
-                    del st.session_state["delete_id"]
-                    st.rerun()
+            if c2.button("Cancel"):
+                del st.session_state.delete_id
+                st.rerun()
 
-    else:
-        st.info("No students found.")
-
-# ==================================================
+# =================================================
 # PAYMENTS
-# ==================================================
-elif menu == "Fee Management":
-
-    if st.session_state.role != "Admin":
-        st.warning("Only Admin can access this section")
-        st.stop()
+# =================================================
+elif menu == "Payments":
 
     st.header("Student Payments")
 
     students = get_all_students()
 
     if not students:
-        st.warning("Please add students first.")
+        st.warning("Add students first")
     else:
 
-        student_df = pd.DataFrame(students, columns=[
-            "ID", "First Name", "Last Name", "Gender",
-            "Section", "Class", "Phone", "Admission Date", "Status"
+        df = pd.DataFrame(students, columns=[
+            "ID","First Name","Last Name","Gender",
+            "Section","Class","Phone","Admission Date","Status"
         ])
 
-        student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
+        df["Name"] = df["First Name"] + " " + df["Last Name"]
 
-        selected_name = st.selectbox(
-            "Select Student",
-            student_df["Name"],
-            key="payment_student"
-        )
+        selected = st.selectbox("Select Student", df["Name"])
 
-        student_row = student_df[student_df["Name"] == selected_name].iloc[0]
+        row = df[df["Name"] == selected].iloc[0]
 
-        student_id = student_row["ID"]
-        section = student_row["Section"]
-        student_class = student_row["Class"]
+        student_id = row["ID"]
+        section = row["Section"]
+        student_class = row["Class"]
 
-        term = st.selectbox("Term", ["1st", "2nd", "3rd"], key="payment_term")
-        session = st.text_input("Session (Example: 2024/2025)", key="payment_session")
+        term = st.selectbox("Term", ["1st","2nd","3rd"])
+        session = st.text_input("Session")
 
         if session:
 
-            previous_outstanding = get_previous_outstanding(student_id, session)
-            current_fee = get_current_fee(section, term, session)
-            total_paid = get_total_paid(student_id, term, session)
+            prev = get_previous_outstanding(student_id, session)
+            fee = get_current_fee(section, term, session)
+            paid = get_total_paid(student_id, term, session)
 
-            amount_owed = (previous_outstanding + current_fee) - total_paid
-
-            st.subheader("Financial Summary")
+            owed = (prev + fee) - paid
 
             col1, col2 = st.columns(2)
 
-            col1.metric("Previous Outstanding", f"₦{previous_outstanding:,.2f}")
-            col1.metric("Current Term Fee", f"₦{current_fee:,.2f}")
+            col1.metric("Previous Outstanding", f"₦{prev:,.2f}")
+            col1.metric("Current Fee", f"₦{fee:,.2f}")
 
-            col2.metric("Total Paid This Term", f"₦{total_paid:,.2f}")
-            col2.metric("Amount Owed", f"₦{amount_owed:,.2f}")
-
-            if current_fee == 0:
-                st.warning("Fee has not been set for this section, term, and session.")
+            col2.metric("Paid", f"₦{paid:,.2f}")
+            col2.metric("Amount Owed", f"₦{owed:,.2f}")
 
             st.divider()
 
-            st.subheader("Record Payment")
-
             amount = st.number_input("Amount Paid", min_value=0.0)
-            payment_date = st.date_input("Payment Date")
+            date = st.date_input("Payment Date")
 
             if st.button("Save Payment"):
-                if amount > 0:
-                    add_payment(
-                        student_id,
-                        term,
-                        session,
-                        amount,
-                        str(payment_date)
+                add_payment(student_id, term, session, amount, str(date))
+                st.success("Payment recorded")
+                st.rerun()
+
+            st.divider()
+
+            st.subheader("Generate Statement")
+
+            if st.button("Generate PDF"):
+                file = generate_student_statement(
+                    selected,
+                    section,
+                    student_class,
+                    session,
+                    prev,
+                    fee,
+                    paid,
+                    owed
+                )
+
+                with open(file, "rb") as f:
+                    st.download_button(
+                        "Download Statement",
+                        data=f,
+                        file_name=file
                     )
-                    st.success("Payment recorded successfully.")
-                    st.rerun()
-                else:
-                    st.warning("Enter payment amount.")
+
+# =================================================
+# FEE MANAGEMENT
+# =================================================
+elif menu == "Fee Management":
+
+    if st.session_state.role != "Admin":
+        st.warning("Admin only")
+        st.stop()
+
+    st.header("Set School Fees")
+
+    section = st.selectbox("Section", ["Nursery","Primary","Secondary"])
+    term = st.selectbox("Term", ["1st","2nd","3rd"])
+    session = st.text_input("Session")
+    fee = st.number_input("Fee Amount")
+
+    if st.button("Save Fee"):
+        set_fee(section, term, session, fee)
+        st.success("Fee saved")
+
+# =================================================
+# PROMOTE SESSION
+# =================================================
+elif menu == "Promote Session":
+
+    if st.session_state.role != "Admin":
+        st.warning("Admin only")
+        st.stop()
+
+    st.header("Promote Session")
+
+    new_session = st.text_input("New Session")
+
+    if st.button("Roll Over"):
+        rollover_outstanding(new_session)
+        st.success("Promotion complete")

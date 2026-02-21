@@ -1,345 +1,198 @@
 import sqlite3
 
-# ---------------------------------------------------
-# DATABASE NAME
-# ---------------------------------------------------
-
 DB_NAME = "school.db"
 
 
-# ---------------------------------------------------
-# GET DATABASE CONNECTION
-# ---------------------------------------------------
-
 def get_connection():
-    """
-    Returns a SQLite connection with foreign keys enabled
-    """
     conn = sqlite3.connect(DB_NAME, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
-# ---------------------------------------------------
 # CREATE TABLES
-# ---------------------------------------------------
-
 def create_tables():
-    """
-    Creates all system tables if they do not exist
-    """
-
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        # ---------------------------------------------------
-        # STUDENTS TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            student_id TEXT PRIMARY KEY,
-            first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL,
-            gender TEXT,
-            section TEXT NOT NULL,
-            class TEXT NOT NULL,
-            parent_phone TEXT,
-            admission_date TEXT,
-            status TEXT DEFAULT 'Active'
-        );
-        """)
+    # USERS TABLE (Login system)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL
+    )
+    """)
 
-        # ---------------------------------------------------
-        # FEES TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            section TEXT NOT NULL,
-            term TEXT NOT NULL,
-            session TEXT NOT NULL,
-            total_fee REAL NOT NULL,
-            UNIQUE(section, term, session)
-        );
-        """)
+    # STUDENTS TABLE
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS students (
+        student_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        class_name TEXT,
+        gender TEXT,
+        parent_name TEXT,
+        parent_phone TEXT,
+        address TEXT,
+        session TEXT
+    )
+    """)
 
-        # ---------------------------------------------------
-        # PAYMENTS TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            payment_id TEXT PRIMARY KEY,
-            student_id TEXT NOT NULL,
-            term TEXT NOT NULL,
-            session TEXT NOT NULL,
-            amount_paid REAL NOT NULL CHECK(amount_paid >= 0),
-            payment_date TEXT NOT NULL,
-            FOREIGN KEY (student_id)
-            REFERENCES students(student_id)
-            ON DELETE CASCADE
-        );
-        """)
-        # USERS TABLE
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            name TEXT,
-            password TEXT,
-            role TEXT
-        );
-        """)
+    # FEES TABLE
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS fees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        amount REAL,
+        term TEXT,
+        session TEXT,
+        date_paid TEXT,
+        FOREIGN KEY(student_id) REFERENCES students(student_id)
+    )
+    """)
 
-        # ---------------------------------------------------
-        # OUTSTANDING BALANCES
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS outstanding_balances (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id TEXT NOT NULL,
-            session TEXT NOT NULL,
-            amount REAL NOT NULL,
-            UNIQUE(student_id, session),
-            FOREIGN KEY (student_id)
-            REFERENCES students(student_id)
-            ON DELETE CASCADE
-        );
-        """)
-
-        # ---------------------------------------------------
-        # INDEXES (Performance)
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_payment_student
-        ON payments(student_id);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_payment_session
-        ON payments(session);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_fee_lookup
-        ON fees(section, term, session);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_student_section
-        ON students(section);
-        """)
-
-        conn.commit()
-
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
-# ---------------------------------------------------
-# RESET DATABASE (FOR DEVELOPMENT ONLY)
-# ---------------------------------------------------
-
-def reset_database():
-    """
-    Deletes all tables and recreates them.
-    Use only during development/testing.
-    """
-
+# CREATE DEFAULT ADMIN
+def create_default_admin():
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        # Drop dependent tables first
-        cursor.execute("DROP TABLE IF EXISTS payments")
-        cursor.execute("DROP TABLE IF EXISTS outstanding_balances")
-        cursor.execute("DROP TABLE IF EXISTS fees")
-        cursor.execute("DROP TABLE IF EXISTS students")
+    cursor.execute("""
+    INSERT OR IGNORE INTO users (username, password, role)
+    VALUES (?, ?, ?)
+    """, ("admin", "admin123", "admin"))
 
-        conn.commit()
-
-    finally:
-        conn.close()
-
-    # Recreate tables
-    create_tables()
-
-import sqlite3
-
-# ---------------------------------------------------
-# DATABASE NAME
-# ---------------------------------------------------
-
-DB_NAME = "school.db"
+    conn.commit()
+    conn.close()
 
 
-# ---------------------------------------------------
-# GET DATABASE CONNECTION
-# ---------------------------------------------------
-
-def get_connection():
-    """
-    Returns a SQLite connection with foreign keys enabled
-    """
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
-
-
-# ---------------------------------------------------
-# CREATE TABLES
-# ---------------------------------------------------
-
-def create_tables():
-    """
-    Creates all system tables if they do not exist
-    """
-
+# ADD USER
+def add_user(username, password, role):
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        # ---------------------------------------------------
-        # STUDENTS TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            student_id TEXT PRIMARY KEY,
-            first_name TEXT NOT NULL,
-            last_name TEXT NOT NULL,
-            gender TEXT,
-            section TEXT NOT NULL,
-            class TEXT NOT NULL,
-            parent_phone TEXT,
-            admission_date TEXT,
-            status TEXT DEFAULT 'Active'
-        );
-        """)
+    cursor.execute("""
+    INSERT INTO users (username, password, role)
+    VALUES (?, ?, ?)
+    """, (username, password, role))
 
-        # ---------------------------------------------------
-        # FEES TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            section TEXT NOT NULL,
-            term TEXT NOT NULL,
-            session TEXT NOT NULL,
-            total_fee REAL NOT NULL,
-            UNIQUE(section, term, session)
-        );
-        """)
-
-        # ---------------------------------------------------
-        # PAYMENTS TABLE
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS payments (
-            payment_id TEXT PRIMARY KEY,
-            student_id TEXT NOT NULL,
-            term TEXT NOT NULL,
-            session TEXT NOT NULL,
-            amount_paid REAL NOT NULL CHECK(amount_paid >= 0),
-            payment_date TEXT NOT NULL,
-            FOREIGN KEY (student_id)
-            REFERENCES students(student_id)
-            ON DELETE CASCADE
-        );
-        """)
-
-        # ---------------------------------------------------
-        # OUTSTANDING BALANCES
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS outstanding_balances (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id TEXT NOT NULL,
-            session TEXT NOT NULL,
-            amount REAL NOT NULL,
-            UNIQUE(student_id, session),
-            FOREIGN KEY (student_id)
-            REFERENCES students(student_id)
-            ON DELETE CASCADE
-        );
-        """)
-
-        # ---------------------------------------------------
-        # INDEXES (Performance)
-        # ---------------------------------------------------
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_payment_student
-        ON payments(student_id);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_payment_session
-        ON payments(session);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_fee_lookup
-        ON fees(section, term, session);
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_student_section
-        ON students(section);
-        """)
-
-        conn.commit()
-
-    finally:
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
-# ---------------------------------------------------
-# RESET DATABASE (FOR DEVELOPMENT ONLY)
-# ---------------------------------------------------
-
-def reset_database():
-    """
-    Deletes all tables and recreates them.
-    Use only during development/testing.
-    """
-
+# LOGIN USER
+def login_user(username, password):
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        # Drop dependent tables first
-        cursor.execute("DROP TABLE IF EXISTS payments")
-        cursor.execute("DROP TABLE IF EXISTS outstanding_balances")
-        cursor.execute("DROP TABLE IF EXISTS fees")
-        cursor.execute("DROP TABLE IF EXISTS students")
+    cursor.execute("""
+    SELECT * FROM users
+    WHERE username = ? AND password = ?
+    """, (username, password))
 
-        conn.commit()
-
-    finally:
-        conn.close()
-
-    # Recreate tables
-    create_tables()
-
-    def create_default_admin():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     user = cursor.fetchone()
+    conn.close()
 
-    if not user:
-        cursor.execute("""
-        INSERT INTO users (username, name, password, role)
-        VALUES (?, ?, ?, ?)
-        """, (
-            "admin",
-            "Administrator",
-            "admin123",
-            "Admin"
-        ))
+    return user
 
-        conn.commit()
+
+# ADD STUDENT
+def add_student(name, class_name, gender, parent_name, parent_phone, address, session):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO students (name, class_name, gender, parent_name, parent_phone, address, session)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (name, class_name, gender, parent_name, parent_phone, address, session))
+
+    conn.commit()
+    conn.close()
+
+
+# GET ALL STUDENTS
+def get_students():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM students")
+    students = cursor.fetchall()
 
     conn.close()
+    return students
+
+
+# DELETE STUDENT
+def delete_student(student_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM students WHERE student_id = ?", (student_id,))
+
+    conn.commit()
+    conn.close()
+
+
+# RECORD FEE PAYMENT
+def record_fee(student_id, amount, term, session, date_paid):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT INTO fees (student_id, amount, term, session, date_paid)
+    VALUES (?, ?, ?, ?, ?)
+    """, (student_id, amount, term, session, date_paid))
+
+    conn.commit()
+    conn.close()
+
+
+# GET TOTAL STUDENTS
+def get_total_students():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) as total FROM students")
+    total = cursor.fetchone()["total"]
+
+    conn.close()
+    return total
+
+
+# TOTAL REVENUE BY SESSION
+def get_total_revenue_by_session(session):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT SUM(amount) as total
+    FROM fees
+    WHERE session = ?
+    """, (session,))
+
+    result = cursor.fetchone()["total"]
+    conn.close()
+
+    if result is None:
+        return 0
+    return result
+
+
+# GET ALL TRANSACTIONS
+def get_transactions():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT students.name, fees.amount, fees.term, fees.session, fees.date_paid
+    FROM fees
+    JOIN students ON students.student_id = fees.student_id
+    """)
+
+    transactions = cursor.fetchall()
+    conn.close()
+
+    return transactions
