@@ -12,7 +12,8 @@ from models import (
     get_current_fee,
     get_total_paid,
     get_previous_outstanding,
-    rollover_outstanding
+    rollover_outstanding,
+    delete_student
 )
 from pdf_report import generate_student_statement
 
@@ -44,12 +45,24 @@ if menu == "Dashboard":
 
     st.header("School Overview")
 
+    # Select session
+    session = st.text_input("Enter Session to View Revenue (Example: 2024/2025)")
+
     col1, col2 = st.columns(2)
 
     col1.metric("Total Students", total_students())
-    col2.metric("Total Revenue Collected", f"₦{total_revenue():,.2f}")
 
-
+    if session:
+        revenue = total_revenue(session)
+        col2.metric(
+            f"Revenue for {session}",
+            f"₦{revenue:,.2f}"
+        )
+    else:
+        col2.metric(
+            "Revenue (Enter Session)",
+            "₦0.00"
+        )
 # ==================================================
 # MANAGE STUDENTS
 # ==================================================
@@ -83,6 +96,7 @@ elif menu == "Manage Students":
         else:
             st.warning("Please enter student first and last name.")
 
+    st.divider()
     st.subheader("All Students")
 
     students = get_all_students()
@@ -92,11 +106,45 @@ elif menu == "Manage Students":
             "ID", "First Name", "Last Name", "Gender",
             "Section", "Class", "Phone", "Admission Date", "Status"
         ])
+
         student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
-        st.dataframe(student_df, use_container_width=True)
+
+        for index, row in student_df.iterrows():
+            col1, col2, col3, col4 = st.columns([3,2,2,1])
+
+            with col1:
+                st.write(f"**{row['Name']}**")
+
+            with col2:
+                st.write(row["Class"])
+
+            with col3:
+                st.write(row["Section"])
+
+            with col4:
+                if st.button("Delete", key=f"del_{row['ID']}"):
+                    st.session_state["delete_id"] = row["ID"]
+
+        # Confirmation warning
+        if "delete_id" in st.session_state:
+            st.warning("Are you sure you want to permanently delete this student?")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if st.button("Yes, Delete"):
+                    delete_student(st.session_state["delete_id"])
+                    st.success("Student deleted successfully.")
+                    del st.session_state["delete_id"]
+                    st.rerun()
+
+            with col2:
+                if st.button("Cancel"):
+                    del st.session_state["delete_id"]
+                    st.rerun()
+
     else:
         st.info("No students found.")
-
 
 # ==================================================
 # PAYMENTS
@@ -119,10 +167,10 @@ elif menu == "Payments":
         student_df["Name"] = student_df["First Name"] + " " + student_df["Last Name"]
 
         selected_name = st.selectbox(
-    "Select Student",
-    student_df["Name"],
-    key="payment_student"
-)
+            "Select Student",
+            student_df["Name"],
+            key="payment_student"
+        )
 
         student_row = student_df[student_df["Name"] == selected_name].iloc[0]
 
@@ -156,7 +204,6 @@ elif menu == "Payments":
 
             st.divider()
 
-            # Record Payment
             st.subheader("Record Payment")
 
             amount = st.number_input("Amount Paid", min_value=0.0)
@@ -175,114 +222,3 @@ elif menu == "Payments":
                     st.rerun()
                 else:
                     st.warning("Enter payment amount.")
-
-            st.divider()
-
-            # Payment History
-            st.subheader("Payment History")
-
-            payments = get_payments()
-
-            if payments:
-                payment_df = pd.DataFrame(payments, columns=[
-                    "Payment ID",
-                    "Student ID",
-                    "Term",
-                    "Session",
-                    "Amount",
-                    "Date"
-                ])
-
-                student_payments = payment_df[
-                    payment_df["Student ID"] == student_id
-                ]
-
-                st.dataframe(student_payments, use_container_width=True)
-            else:
-                st.info("No payments recorded yet.")
-
-            st.divider()
-
-            # Generate Statement
-            st.subheader("Generate Student Financial Statement")
-
-            if st.button("Generate PDF Statement"):
-
-                file_path = generate_student_statement(
-                    selected_name,
-                    section,
-                    student_class,
-                    session,
-                    previous_outstanding,
-                    current_fee,
-                    total_paid,
-                    amount_owed
-                )
-
-                with open(file_path, "rb") as file:
-                    st.download_button(
-                        label="Download Statement",
-                        data=file,
-                        file_name=file_path,
-                        mime="application/pdf"
-                    )
-
-
-# ==================================================
-# FEE MANAGEMENT
-# ==================================================
-elif menu == "Fee Management":
-
-    st.header("Set School Fees")
-
-    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"], key="fee_section")
-    term = st.selectbox("Term", ["1st", "2nd", "3rd"], key="fee_term")
-    session = st.text_input("Session (Example: 2024/2025)", key="fee_session")
-    fee = st.number_input("Fee Amount", min_value=0.0)
-
-    if st.button("Save Fee"):
-        if session:
-            set_fee(section, term, session, fee)
-            st.success("School fee updated successfully.")
-            st.rerun()
-        else:
-            st.warning("Enter session.")
-
-
-# ==================================================
-# PROMOTE SESSION
-# ==================================================
-elif menu == "Promote Session":
-
-    st.header("Promote Students to New Session")
-
-    new_session = st.text_input("Enter New Session")
-
-    if st.button("Roll Over Outstanding Balances"):
-        if new_session:
-            rollover_outstanding(new_session)
-            st.success("Outstanding balances successfully rolled over.")
-        else:
-            st.warning("Enter new session.")
-            
-import pandas as pd
-import streamlit as st
-from database import create_tables
-from models import (
-    add_student,
-    get_all_students,
-    add_payment,
-    get_payments,
-    total_students,
-    total_revenue,
-    set_fee,
-    get_current_fee,
-    get_total_paid,
-    get_previous_outstanding,
-    rollover_outstanding
-)
-from pdf_report import generate_student_statement
-
-# Initialize database
-create_tables()
-

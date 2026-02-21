@@ -311,4 +311,3 @@ def reset_database():
 
     # Recreate tables
     create_tables()
-

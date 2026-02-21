@@ -191,17 +191,23 @@ def total_students():
         conn.close()
 
 
-def total_revenue():
+def total_revenue(session=None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        cursor.execute("SELECT SUM(amount_paid) FROM payments")
-        result = cursor.fetchone()
-        return result[0] if result and result[0] else 0
-    finally:
-        conn.close()
+    if session:
+        cursor.execute(
+            "SELECT IFNULL(SUM(amount_paid),0) FROM payments WHERE session = ?",
+            (session,)
+        )
+    else:
+        cursor.execute(
+            "SELECT IFNULL(SUM(amount_paid),0) FROM payments"
+        )
 
+    revenue = cursor.fetchone()[0]
+    conn.close()
+    return revenue
 
 # =========================================================
 # FEE MANAGEMENT
@@ -571,16 +577,23 @@ def total_students():
         conn.close()
 
 
-def total_revenue():
+def total_revenue(session=None):
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        cursor.execute("SELECT SUM(amount_paid) FROM payments")
-        result = cursor.fetchone()
-        return result[0] if result and result[0] else 0
-    finally:
-        conn.close()
+    if session:
+        cursor.execute(
+            "SELECT IFNULL(SUM(amount_paid),0) FROM payments WHERE session = ?",
+            (session,)
+        )
+    else:
+        cursor.execute(
+            "SELECT IFNULL(SUM(amount_paid),0) FROM payments"
+        )
+
+    revenue = cursor.fetchone()[0]
+    conn.close()
+    return revenue
 
 
 # =========================================================
@@ -757,3 +770,21 @@ def rollover_outstanding(new_session):
 
     finally:
         conn.close()
+def delete_student(student_id):
+    import sqlite3
+    conn = sqlite3.connect("school.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM students WHERE student_id = ?", (student_id,))
+    
+    conn.commit()
+    conn.close()
+
+#def delete_student(student_id):
+#    import sqlite3
+#    conn = sqlite3.connect("school.db")
+#    cursor = conn.cursor()
+
+#    cursor.execute("DELETE FROM students WHERE id = ?", (student_id,))
+#    conn.commit()
+#    conn.close()
