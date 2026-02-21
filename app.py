@@ -1,3 +1,34 @@
+st.set_page_config(
+    page_title="School Management System",
+    page_icon="🏫",
+    layout="wide"
+)
+st.markdown("""
+<style>
+.main {
+    background-color: #f5f7fb;
+}
+h1, h2, h3 {
+    color: #1f4e79;
+}
+</style>
+""", unsafe_allow_html=True)
+import sqlite3
+
+def check_login(username, password):
+    conn = sqlite3.connect("school.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT name, role FROM users WHERE username=? AND password=?",
+        (username, password)
+    )
+
+    user = cursor.fetchone()
+    conn.close()
+
+    return user
+
 import pandas as pd
 import streamlit as st
 from database import create_tables
@@ -19,10 +50,36 @@ from pdf_report import generate_student_statement
 
 # Initialize database
 create_tables()
+from database import create_default_admin
+create_default_admin()
 
 # -------------------------------
 # SIDEBAR NAVIGATION
 # -------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+
+    st.title("School Management System Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        user = check_login(username, password)
+
+        if user:
+            st.session_state.logged_in = True
+            st.session_state.name = user[0]
+            st.session_state.role = user[1]
+            st.success("Login successful")
+            st.rerun()
+        else:
+            st.error("Invalid username or password")
+
+    st.stop()
+
 st.sidebar.title("Navigation")
 menu = st.sidebar.selectbox(
     "Menu",
@@ -37,6 +94,13 @@ menu = st.sidebar.selectbox(
 )
 
 st.title("Zion Foundation Model Academy")
+
+st.sidebar.write(f"Logged in as: {st.session_state.name}")
+st.sidebar.write(f"Role: {st.session_state.role}")
+
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
 
 # ==================================================
 # DASHBOARD
@@ -149,7 +213,11 @@ elif menu == "Manage Students":
 # ==================================================
 # PAYMENTS
 # ==================================================
-elif menu == "Payments":
+elif menu == "Fee Management":
+
+    if st.session_state.role != "Admin":
+        st.warning("Only Admin can access this section")
+        st.stop()
 
     st.header("Student Payments")
 

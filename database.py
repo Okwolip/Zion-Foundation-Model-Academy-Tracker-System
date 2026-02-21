@@ -81,6 +81,16 @@ def create_tables():
             ON DELETE CASCADE
         );
         """)
+        # USERS TABLE
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            name TEXT,
+            password TEXT,
+            role TEXT
+        );
+        """)
 
         # ---------------------------------------------------
         # OUTSTANDING BALANCES
@@ -311,3 +321,25 @@ def reset_database():
 
     # Recreate tables
     create_tables()
+
+    def create_default_admin():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+    user = cursor.fetchone()
+
+    if not user:
+        cursor.execute("""
+        INSERT INTO users (username, name, password, role)
+        VALUES (?, ?, ?, ?)
+        """, (
+            "admin",
+            "Administrator",
+            "admin123",
+            "Admin"
+        ))
+
+        conn.commit()
+
+    conn.close()
