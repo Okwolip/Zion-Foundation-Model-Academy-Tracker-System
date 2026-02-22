@@ -23,14 +23,17 @@ def get_connection():
 # CREATE DEFAULT ADMIN USER
 # ----------------------------
 def create_admin():
-    with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT INTO users (username, password, role)
-            SELECT 'admin', 'admin123', 'admin'
-            WHERE NOT EXISTS (
-                SELECT 1 FROM users WHERE username='admin'
-            )
-        """))
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO users (username, password, role)
+                SELECT 'admin', 'admin123', 'admin'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM users WHERE username='admin'
+                )
+            """))
+    except:
+        pass
 
 create_admin()
 
@@ -39,12 +42,14 @@ create_admin()
 # ----------------------------
 def check_login(username, password):
     with get_connection() as conn:
-        query = text("""
+        result = conn.execute(text("""
         SELECT * FROM users
         WHERE username = :username
         AND password = :password
-        """)
-        result = conn.execute(query, {"username": username, "password": password}).fetchone()
+        """), {
+            "username": username,
+            "password": password
+        }).fetchone()
         return result
 
 # ----------------------------
@@ -68,6 +73,7 @@ if not st.session_state.logged_in:
 
         if user:
             st.session_state.logged_in = True
+            st.session_state.username = username
             st.success("Login successful")
             st.rerun()
         else:
@@ -87,7 +93,9 @@ menu = st.sidebar.selectbox(
         "Add Student",
         "View Students",
         "Attendance",
-        "Results"
+        "Results",
+        "Payment",
+        "Fee Settings"
     ]
 )
 
@@ -120,6 +128,12 @@ elif menu == "Add Student":
     name = st.text_input("Student Name")
     gender = st.selectbox("Gender", ["Male", "Female"])
     student_class = st.text_input("Class")
+
+    section = st.selectbox(
+        "Section",
+        ["Nursery", "Primary", "Secondary"]
+    )
+
     dob = st.date_input("Date of Birth")
     parent_name = st.text_input("Parent Name")
     parent_phone = st.text_input("Parent Phone")
@@ -130,14 +144,15 @@ elif menu == "Add Student":
         with engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO students
-                (student_id, name, gender, class, date_of_birth, parent_name, parent_phone, address)
+                (student_id, name, gender, class, section, date_of_birth, parent_name, parent_phone, address)
                 VALUES
-                (:student_id, :name, :gender, :class, :dob, :parent_name, :parent_phone, :address)
+                (:student_id, :name, :gender, :class, :section, :dob, :parent_name, :parent_phone, :address)
             """), {
                 "student_id": student_id,
                 "name": name,
                 "gender": gender,
                 "class": student_class,
+                "section": section,
                 "dob": dob,
                 "parent_name": parent_name,
                 "parent_phone": parent_phone,
@@ -228,3 +243,116 @@ elif menu == "Results":
             })
 
         st.success("Result saved")
+
+# ----------------------------
+# FEE SETTINGS (ADMIN ONLY)
+# ----------------------------
+elif menu == "Fee Settings":
+
+    st.header("School Fee Settings")
+
+    if st.session_state.username != "admin":
+        st.warning("Only admin can set school fees")
+        st.stop()
+
+    section = st.selectbox(
+        "Section",
+        ["Nursery", "Primary", "Secondary"]
+    )
+
+    term = st.selectbox(
+        "Term",
+        ["First Term", "Second Term", "Third Term"]
+    )
+
+    fee_amount = st.number_input("Fee Amount", 0)
+
+    if st.button("Save Fee"):
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+            INSERT INTO fee_settings (section, term, fee_amount)
+            VALUES (:section, :term, :fee_amount)
+            ON CONFLICT (section, term)
+            DO UPDATE SET fee_amount = EXCLUDED.fee_amount
+            """), {
+                "section": section,
+                "term": term,
+                "fee_amount": fee_amount
+            })
+
+        st.success("Fee saved successfully")
+
+# ----------------------------
+# PAYMENT SYSTEM
+# ----------------------------
+elif menu == "Payment":
+
+    st.header("Student Payment")
+
+    with get_connection() as conn:
+        students = conn.execute(text("""
+        SELECT student_id, name, section FROM students
+        """)).fetchall()
+
+    student_dict = {
+        f"{s.name} ({s.student_id})": (s.student_id, s.section)
+        for s in students
+    }
+
+    selected_student = st.selectbox("Select Student", list(student_dict.keys()))
+
+    term = st.selectbox(
+        "Term",
+        ["First Term", "Second Term", "Third Term"]
+    )
+
+    session = st.text_input("Session (e.g 2025/2026)")
+
+    outstanding = st.number_input("Outstanding From Previous Term (X)", 0)
+    amount_paid = st.number_input("Amount Paid (Z)", 0)
+
+    if st.button("Calculate & Save Payment"):
+
+        student_id, section = student_dict[selected_student]
+
+        with get_connection() as conn:
+            fee = conn.execute(text("""
+            SELECT fee_amount FROM fee_settings
+            WHERE section = :section AND term = :term
+            """), {
+                "section": section,
+                "term": term
+            }).fetchone()
+
+        if not fee:
+            st.error("Fee not set for this section and term")
+            st.stop()
+
+        X = outstanding
+        Y = fee.fee_amount
+        Z = amount_paid
+
+        J = (X + Y) - Z
+
+        with engine.begin() as conn:
+            conn.execute(text("""
+            INSERT INTO payments
+            (student_id, term, session, outstanding, amount_paid)
+            VALUES
+            (:student_id, :term, :session, :outstanding, :amount_paid)
+            """), {
+                "student_id": student_id,
+                "term": term,
+                "session": session,
+                "outstanding": X,
+                "amount_paid": Z
+            })
+
+        st.success("Payment recorded")
+
+        st.write("### Payment Summary")
+        st.write(f"Outstanding Previous Term (X): {X}")
+        st.write(f"Current Fee (Y): {Y}")
+        st.write(f"Amount Paid (Z): {Z}")
+        st.write(f"Amount Owed (J): {J}")
