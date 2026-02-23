@@ -278,7 +278,7 @@ elif menu == "Payment":
 
     selected = st.selectbox("Student", list(options.keys()))
     term = st.selectbox("Term", ["First Term", "Second Term", "Third Term"])
-    session = st.text_input("Session")
+    session = st.text_input("Session (Example: 2025/2026)").strip()
 
     if selected:
         student = options[selected]
@@ -288,9 +288,10 @@ elif menu == "Payment":
             fee = conn.execute(text("""
             SELECT fee_amount
             FROM school_fee_settings
-            WHERE section=:section
-            AND term=:term
-            AND session=:session
+            WHERE LOWER(TRIM(section)) = LOWER(TRIM(:section))
+            AND LOWER(TRIM(term)) = LOWER(TRIM(:term))
+            AND LOWER(TRIM(session)) = LOWER(TRIM(:session))
+            LIMIT 1
             """), {
                 "section": student.section,
                 "term": term,
@@ -323,6 +324,9 @@ elif menu == "Payment":
         st.info(f"Current Term Fee: ₦{fee_amount}")
         st.success(f"Amount Paid: ₦{paid}")
         st.error(f"Amount Owed: ₦{owed}")
+        st.write("Student Section:", student.section)
+        st.write("Selected Term:", term)
+        st.write("Entered Session:", session)
 
         payment = st.number_input("Enter Payment", min_value=0)
 
@@ -367,10 +371,11 @@ elif menu == "School Fee Settings":
         )
 
         # ✅ SESSION FIELD (THIS WAS MISSING)
-        session = st.text_input(
-            "Session (Example: 2024/2025)",
-            placeholder="e.g. 2025/2026"
-        )
+        session = st.text_input("Session (Example: 2024/2025)").strip()
+        #session = st.text_input(
+        #    "Session (Example: 2024/2025)",
+        #    placeholder="e.g. 2025/2026"
+        #)
 
     with col2:
         fee = st.number_input(
