@@ -143,11 +143,12 @@ elif menu=="Payment":
     st.header("Student Payment")
 
     with get_connection() as conn:
-        students=conn.execute(text("""
-        SELECT student_id,name,section
+        students = conn.execute(text("""
+        SELECT student_id,name,
+        COALESCE(section,'Primary') as section
         FROM students
         """)).fetchall()
-
+        
     options={f"{s.name} ({s.student_id})":s for s in students}
 
     selected=st.selectbox("Select Student",options.keys())
@@ -161,7 +162,8 @@ elif menu=="Payment":
     if selected:
 
         student=options[selected]
-        section=student.section.strip()
+        #section=student.section.strip()
+        section = (student.section or "").strip()
 
         with get_connection() as conn:
 
@@ -249,7 +251,8 @@ elif menu=="School Fee Settings":
             VALUES
             (:section,:term,:session,:fee)
             """),{
-            "section":section.strip(),
+            "section": section,
+#            "section":section.strip(),
             "term":term.strip(),
             "session":session,
             "fee":fee
