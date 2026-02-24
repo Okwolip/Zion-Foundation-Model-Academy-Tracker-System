@@ -19,6 +19,41 @@ def run_query(query, params=None, fetch=False):
             return result.fetchall()
 
 # =========================
+# LOGIN SYSTEM
+# =========================
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+def check_login(username, password):
+    user = run_query("""
+    SELECT * FROM users
+    WHERE username=:username
+    AND password=:password
+    """, {"username": username, "password": password}, True)
+
+    return user
+
+if not st.session_state.logged_in:
+
+    st.title("School System Login")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        user = check_login(username, password)
+
+        if user:
+            st.session_state.logged_in = True
+            st.success("Login successful")
+            st.rerun()
+        else:
+            st.error("Invalid login")
+
+    st.stop()
+
+# =========================
 # APP HEADER
 # =========================
 
@@ -26,7 +61,15 @@ st.title("School Record Tracker System")
 
 menu = st.sidebar.selectbox(
     "Navigation",
-    ["Dashboard", "Add Student", "Payment", "School Fee Settings"]
+    [
+        "Dashboard",
+        "Add Student",
+        "Student List",
+        "Payment",
+        "Payment History",
+        "School Fee Settings",
+        "Fee History"
+    ]
 )
 
 # =========================
@@ -34,28 +77,44 @@ menu = st.sidebar.selectbox(
 # =========================
 
 if menu == "Dashboard":
-    st.header("Dashboard")
 
-    search = st.text_input("Search Student (Name or ID)")
+    st.header("Search Student (Name or ID)")
 
-    if search:
-        students = run_query("""
-        SELECT student_id, name, student_class, section
-        FROM students
-        WHERE name ILIKE :search OR student_id ILIKE :search
+    search = st.text_input("Enter student name or ID")
+
+    if st.button("Search"):
+
+        student = run_query("""
+        SELECT * FROM students
+        WHERE name ILIKE :search
+        OR student_id ILIKE :search
         """, {"search": f"%{search}%"}, True)
 
-        if students:
-            for s in students:
-                row = s._mapping
-                st.write("Name:", row["name"])
-                st.write("ID:", row["student_id"])
-                st.write("Class:", row["student_class"])
-                st.write("Section:", row["section"])
-                st.divider()
-        else:
+        if not student:
             st.warning("Student not found")
+            st.stop()
 
+        s = student[0]._mapping
+
+        st.subheader("School Payment Receipt")
+
+        st.write("Student Name:", s["name"])
+        st.write("Student ID:", s["student_id"])
+        st.write("Class:", s.get("student_class", ""))
+        st.write("Section:", s.get("section", ""))
+
+        payments = run_query("""
+        SELECT session, term, amount_paid, balance, created_at
+        FROM payments
+        WHERE student_id=:student_id
+        ORDER BY created_at DESC
+        """, {"student_id": s["student_id"]}, True)
+
+        if payments:
+            df = pd.DataFrame([p._mapping for p in payments])
+            st.dataframe(df)
+        else:
+            st.info("No payment record found.")
 # =========================
 # ADD STUDENT
 # =========================
@@ -84,7 +143,19 @@ elif menu == "Add Student":
         })
 
         st.success("Student added successfully")
+#Just added
+elif menu == "Student List":
 
+    st.header("All Students")
+
+    students = run_query("""
+    SELECT * FROM students
+    ORDER BY created_at DESC
+    """, fetch=True)
+
+    if students:
+        df = pd.DataFrame([s._mapping for s in students])
+        st.dataframe(df)
 # =========================
 # SCHOOL FEE SETTINGS
 # =========================
@@ -112,6 +183,19 @@ elif menu == "School Fee Settings":
         })
 
         st.success("Fee saved successfully")
+#just na
+elif menu == "Fee History":
+
+    st.header("School Fee Records")
+
+    fees = run_query("""
+    SELECT * FROM school_fee_settings
+    ORDER BY id DESC
+    """, fetch=True)
+
+    if fees:
+        df = pd.DataFrame([f._mapping for f in fees])
+        st.dataframe(df)
 
 # =========================
 # PAYMENT SYSTEM
@@ -165,17 +249,15 @@ elif menu == "Payment":
 
         # PREVIOUS DEBT (X)
         debt_result = run_query("""
-        SELECT COALESCE(SUM(balance),0) as debt
+        SELECT COALESCE(SUM(balance), 0) AS debt
         FROM payments
-        WHERE student_id=:student_id
+        WHERE student_id = :student_id
         """, {"student_id": student_id}, True)
 
-        previous_debt = float(debt_result[0]._mapping["debt"])
+        previous_debt = 0
 
-        total_due = previous_debt + current_fee
-        balance = total_due - float(amount_paid)
-
-        # SAVE PAYMENT
+        if debt_result and len(debt_result) > 0:
+            previous_debt = float(debt_result[0]._mapping["debt"] or 0)        # SAVE PAYMENT
         run_query("""
         INSERT INTO payments
         (student_id, session, term, amount_paid, balance)
@@ -189,6 +271,19 @@ elif menu == "Payment":
         })
 
         st.success("Payment recorded successfully")
+#just now
+elif menu == "Payment History":
+
+    st.header("Payment Records")
+
+    payments = run_query("""
+    SELECT * FROM payments
+    ORDER BY created_at DESC
+    """, fetch=True)
+
+    if payments:
+        df = pd.DataFrame([p._mapping for p in payments])
+        st.dataframe(df)
 
         # =========================
         # GENERATE PDF RECEIPT
