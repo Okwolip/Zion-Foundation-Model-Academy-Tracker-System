@@ -23,27 +23,48 @@ st.markdown(
 # =========================================================
 DATABASE_URL = st.secrets["DATABASE_URL"]
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-
-
 def run_query(query, params=None, fetch=False):
-    with engine.begin() as conn:
-        result = conn.execute(text(query), params or {})
-        if fetch:
-            return result.fetchall()
+    try:
+        with engine.begin() as conn:
+            result = conn.execute(text(query), params or {})
+            if fetch:
+                return result.fetchall()
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return None
+
+
+#def run_query(query, params=None, fetch=False):
+#    with engine.begin() as conn:
+#        result = conn.execute(text(query), params or {})
+#        if fetch:
+#            return result.fetchall()
 
 
 # =========================================================
 # CREATE DEFAULT ADMIN
 # =========================================================
-run_query(
-    """
-INSERT INTO users (username, password, role)
-SELECT 'admin','admin123','Admin'
-WHERE NOT EXISTS (
-SELECT 1 FROM users WHERE username='admin'
+# CREATE DEFAULT ADMIN
+existing_admin = run_query(
+    "SELECT * FROM users WHERE username='admin'", fetch=True
 )
-"""
-)
+
+if not existing_admin:
+    run_query(
+        """
+        INSERT INTO users (username, password, role)
+        VALUES ('admin','admin123','Admin')
+        """
+    )
+#run_query(
+#    """
+#INSERT INTO users (username, password, role)
+#SELECT 'admin','admin123','Admin'
+#WHERE NOT EXISTS (
+#SELECT 1 FROM users WHERE username='admin'
+#)
+#"""
+#)
 
 # =========================================================
 # LOGIN
