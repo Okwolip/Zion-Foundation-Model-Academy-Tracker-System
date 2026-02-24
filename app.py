@@ -70,18 +70,19 @@ if not existing_admin:
 # LOGIN
 # =========================================================
 def check_login(username, password):
-    result = run_query(
-        """
+    user = run_query("""
         SELECT username, role
         FROM users
         WHERE username=:username
-        AND password=:password
-        """,
-        {"username": username, "password": password},
-        True,
-    )
-    return result
+        AND password_hash=:password
+    """, {
+        "username": username.strip(),
+        "password": password.strip()
+    }, fetch=True)
 
+    if user:
+        return user[0]
+    return None
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
