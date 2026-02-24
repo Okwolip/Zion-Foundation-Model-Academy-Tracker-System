@@ -2,44 +2,28 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
 from datetime import datetime
-import io
+from io import BytesIO
 
-# =========================================
-# PAGE CONFIG
-# =========================================
+# =========================================================
+# APP CONFIG
+# =========================================================
+st.set_page_config(layout="wide")
 
-st.set_page_config(
-    page_title="Zion Foundation Model Academy ERP",
-    layout="wide"
+st.markdown(
+    """
+    <h1 style='text-align:center; color:#2E86C1'>
+    Zion Foundation Model Academy
+    </h1>
+    """,
+    unsafe_allow_html=True,
 )
 
-# =========================================
-# STYLING
-# =========================================
-
-st.markdown("""
-<style>
-.main-title {
-    font-size:36px;
-    font-weight:bold;
-    color:#ff4b4b;
-}
-.subtitle {
-    font-size:18px;
-    color:#444;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<p class="main-title">Zion Foundation Model Academy</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">School ERP Management System</p>', unsafe_allow_html=True)
-
-# =========================================
+# =========================================================
 # DATABASE CONNECTION
-# =========================================
-
+# =========================================================
 DATABASE_URL = st.secrets["DATABASE_URL"]
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
 
 def run_query(query, params=None, fetch=False):
     with engine.begin() as conn:
@@ -47,37 +31,52 @@ def run_query(query, params=None, fetch=False):
         if fetch:
             return result.fetchall()
 
-# =========================================
-# LOGIN SYSTEM
-# =========================================
+
+# =========================================================
+# CREATE DEFAULT ADMIN
+# =========================================================
+run_query(
+    """
+INSERT INTO users (username, password, role)
+SELECT 'admin','admin123','Admin'
+WHERE NOT EXISTS (
+SELECT 1 FROM users WHERE username='admin'
+)
+"""
+)
+
+# =========================================================
+# LOGIN
+# =========================================================
+def check_login(username, password):
+    result = run_query(
+        """
+        SELECT username, role
+        FROM users
+        WHERE username=:username
+        AND password=:password
+        """,
+        {"username": username, "password": password},
+        True,
+    )
+    return result
+
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-    st.session_state.role = None
-
-def check_login(username, password):
-    user = run_query("""
-    SELECT username, role
-    FROM users
-    WHERE username=:username
-    AND password=:password
-    """, {"username": username, "password": password}, True)
-    return user
 
 if not st.session_state.logged_in:
-
     st.subheader("Login")
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-
         user = check_login(username, password)
 
         if user:
             st.session_state.logged_in = True
-            st.session_state.role = user[0]._mapping["role"]
+            st.session_state.role = user[0][1]
             st.success("Login successful")
             st.rerun()
         else:
@@ -85,341 +84,316 @@ if not st.session_state.logged_in:
 
     st.stop()
 
-# =========================================
+# =========================================================
 # SIDEBAR
-# =========================================
-
-role = st.session_state.role
+# =========================================================
+st.sidebar.title("Navigation")
 
 menu = st.sidebar.selectbox(
-    "Navigation",
+    "Menu",
     [
         "Dashboard",
-        "Add Student",
-        "All Students",
-        "Promote Students",
-        "Payment",
-        "Payment Records",
-        "Debt Report",
-        "Revenue Dashboard",
+        "Register Student",
+        "Student List",
+        "Student Payment",
+        "Payment History",
         "School Fee Settings",
-        "School Fee Records"
-    ]
+        "Revenue Dashboard",
+        "Debt Report",
+        "Promote Students",
+    ],
 )
 
-# =========================================
+# =========================================================
 # DASHBOARD
-# =========================================
-
+# =========================================================
 if menu == "Dashboard":
-
-    st.header("Student Search")
+    st.subheader("Search Student")
 
     search = st.text_input("Search Student (Name or ID)")
 
     if st.button("Search"):
-
-        student = run_query("""
+        result = run_query(
+            """
         SELECT * FROM students
-        WHERE name ILIKE :search
-        OR student_id ILIKE :search
-        """, {"search": f"%{search}%"}, True)
-
-        if not student:
-            st.warning("Student not found")
-            st.stop()
-
-        s = student[0]._mapping
-
-        st.subheader("Student Details")
-        st.write("Name:", s["name"])
-        st.write("Student ID:", s["student_id"])
-        st.write("Class:", s.get("student_class", ""))
-        st.write("Section:", s.get("section", ""))
-
-# =========================================
-# ADD STUDENT
-# =========================================
-
-elif menu == "Add Student":
-
-    if role not in ["admin", "bursar"]:
-        st.warning("Permission denied")
-        st.stop()
-
-    st.header("Register Student")
-
-    name = st.text_input("Student Name")
-    student_class = st.text_input("Class")
-    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
-
-    if st.button("Add Student"):
-
-        student_id = str(int(datetime.now().timestamp()))
-
-        run_query("""
-        INSERT INTO students (student_id, name, student_class, section)
-        VALUES (:id, :name, :class, :section)
-        """, {
-            "id": student_id,
-            "name": name,
-            "class": student_class,
-            "section": section
-        })
-
-        st.success("Student added")
-
-# =========================================
-# ALL STUDENTS
-# =========================================
-
-elif menu == "All Students":
-
-    st.header("Student List")
-
-    students = run_query("""
-    SELECT * FROM students
-    ORDER BY created_at DESC
-    """, fetch=True)
-
-    if students:
-        df = pd.DataFrame([s._mapping for s in students])
-        st.dataframe(df)
-
-        st.download_button(
-            "Export to Excel",
-            df.to_csv(index=False),
-            "students_report.csv"
+        WHERE student_id=:search
+        OR full_name ILIKE :name
+        """,
+            {"search": search, "name": f"%{search}%"},
+            True,
         )
 
-        if role == "admin":
+        if result:
+            df = pd.DataFrame(result)
+            st.dataframe(df)
 
-            student_id = st.selectbox("Delete Student", df["student_id"])
+# =========================================================
+# REGISTER STUDENT
+# =========================================================
+elif menu == "Register Student":
+    st.subheader("Register Student")
 
-            if st.button("Delete Student"):
-                run_query("DELETE FROM students WHERE student_id=:id", {"id": student_id})
-                st.success("Student deleted")
-                st.rerun()
+    student_id = st.text_input("Student ID")
+    name = st.text_input("Full Name")
+    student_class = st.text_input("Class")
+    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
+    session = st.text_input("Session e.g 2025/2026")
 
-# =========================================
-# STUDENT PROMOTION SYSTEM
-# =========================================
+    if st.button("Save Student"):
+        run_query(
+            """
+        INSERT INTO students
+        (student_id, full_name, student_class, section, session)
+        VALUES (:student_id,:name,:student_class,:section,:session)
+        """,
+            {
+                "student_id": student_id,
+                "name": name,
+                "student_class": student_class,
+                "section": section,
+                "session": session,
+            },
+        )
+        st.success("Student Registered")
 
-elif menu == "Promote Students":
+# =========================================================
+# STUDENT LIST
+# =========================================================
+elif menu == "Student List":
+    st.subheader("All Students")
 
-    if role != "admin":
-        st.warning("Admin only")
-        st.stop()
+    data = run_query("SELECT * FROM students ORDER BY id DESC", fetch=True)
+    df = pd.DataFrame(data)
+    st.dataframe(df)
 
-    st.header("Promote Students to Next Class")
+    if st.session_state.role == "Admin":
+        delete_id = st.text_input("Delete Student ID")
 
-    current_class = st.text_input("Current Class")
-    next_class = st.text_input("Next Class")
+        if st.button("Delete Student"):
+            run_query(
+                "DELETE FROM students WHERE student_id=:id",
+                {"id": delete_id},
+            )
+            st.success("Deleted")
 
-    if st.button("Promote"):
+# =========================================================
+# SCHOOL FEE SETTINGS
+# =========================================================
+elif menu == "School Fee Settings":
+    st.subheader("Set School Fees")
 
-        run_query("""
-        UPDATE students
-        SET student_class=:next_class
-        WHERE student_class=:current_class
-        """, {
-            "next_class": next_class,
-            "current_class": current_class
-        })
+    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
+    term = st.selectbox("Term", ["First Term", "Second Term", "Third Term"])
+    session = st.text_input("Session")
+    fee = st.number_input("Fee Amount")
 
-        st.success("Students promoted successfully")
+    if st.button("Save Fee"):
+        run_query(
+            """
+        INSERT INTO school_fee_settings
+        (section, term, session, fee_amount)
+        VALUES (:section,:term,:session,:fee)
+        """,
+            {
+                "section": section,
+                "term": term,
+                "session": session,
+                "fee": fee,
+            },
+        )
+        st.success("Fee Saved")
 
-# =========================================
-# PAYMENT
-# =========================================
+    st.subheader("Fee Records")
 
-elif menu == "Payment":
+    df = pd.DataFrame(
+        run_query("SELECT * FROM school_fee_settings", fetch=True)
+    )
+    st.dataframe(df)
 
-    if role not in ["admin", "bursar"]:
-        st.warning("Permission denied")
-        st.stop()
+# =========================================================
+# STUDENT PAYMENT
+# =========================================================
+elif menu == "Student Payment":
+    st.subheader("Student Payment")
 
-    st.header("Student Payment")
+    students = run_query(
+        "SELECT student_id, full_name, section FROM students",
+        fetch=True,
+    )
 
-    students = run_query("SELECT student_id,name,section FROM students", fetch=True)
+    options = {f"{s[1]} ({s[0]})": s for s in students}
 
-    student_map = {
-        f"{s._mapping['name']} ({s._mapping['student_id']})": s._mapping
-        for s in students
-    }
-
-    selected = st.selectbox("Select Student", list(student_map.keys()))
+    selected = st.selectbox("Select Student", list(options.keys()))
 
     term = st.selectbox("Term", ["First Term", "Second Term", "Third Term"])
-    session = st.text_input("Session (2025/2026)")
-    amount_paid = st.number_input("Amount Paid", min_value=0)
+    session = st.text_input("Session")
+
+    amount_paid = st.number_input("Amount Paid")
 
     if st.button("Process Payment"):
+        student = options[selected]
 
-        student = student_map[selected]
-        student_id = student["student_id"]
-        section = student["section"]
+        student_id = student[0]
+        name = student[1]
+        section = student[2]
 
-        fee = run_query("""
+        fee_result = run_query(
+            """
         SELECT fee_amount
         FROM school_fee_settings
-        WHERE session=:session
+        WHERE section=:section
         AND term=:term
-        AND section=:section
-        """, {
-            "session": session,
-            "term": term,
-            "section": section
-        }, True)
+        AND session=:session
+        """,
+            {
+                "section": section,
+                "term": term,
+                "session": session,
+            },
+            True,
+        )
 
-        if not fee:
+        if not fee_result:
             st.error("Fee not set")
             st.stop()
 
-        current_fee = float(fee[0]._mapping["fee_amount"])
+        fee = fee_result[0][0]
 
-        debt = run_query("""
-        SELECT COALESCE(SUM(balance),0) AS debt
+        debt_result = run_query(
+            """
+        SELECT COALESCE(SUM(balance),0)
         FROM payments
         WHERE student_id=:student_id
-        """, {"student_id": student_id}, True)
-
-        previous_debt = float(debt[0]._mapping["debt"])
-
-        total_due = previous_debt + current_fee
-        balance = total_due - amount_paid
-
-        run_query("""
-        INSERT INTO payments
-        (student_id, session, term, amount_paid, balance)
-        VALUES (:student_id, :session, :term, :paid, :balance)
-        """, {
-            "student_id": student_id,
-            "session": session,
-            "term": term,
-            "paid": amount_paid,
-            "balance": balance
-        })
-
-        st.success("Payment recorded")
-
-# =========================================
-# PAYMENT RECORDS
-# =========================================
-
-elif menu == "Payment Records":
-
-    st.header("Payment History")
-
-    payments = run_query("SELECT * FROM payments ORDER BY created_at DESC", fetch=True)
-
-    if payments:
-        df = pd.DataFrame([p._mapping for p in payments])
-        st.dataframe(df)
-
-        st.download_button(
-            "Export to Excel",
-            df.to_csv(index=False),
-            "payments_report.csv"
+        """,
+            {"student_id": student_id},
+            True,
         )
 
-        if role == "admin":
+        previous_debt = debt_result[0][0]
 
-            payment_id = st.selectbox("Delete Payment", df["id"])
+        total_due = fee + previous_debt
+        balance = total_due - amount_paid
 
-            if st.button("Delete Payment"):
-                run_query("DELETE FROM payments WHERE id=:id", {"id": payment_id})
-                st.success("Payment deleted")
-                st.rerun()
+        run_query(
+            """
+        INSERT INTO payments
+        (student_id, student_name, term, session, fee_amount,
+        previous_debt, amount_paid, balance)
+        VALUES
+        (:student_id,:name,:term,:session,:fee,
+        :previous_debt,:paid,:balance)
+        """,
+            {
+                "student_id": student_id,
+                "name": name,
+                "term": term,
+                "session": session,
+                "fee": fee,
+                "previous_debt": previous_debt,
+                "paid": amount_paid,
+                "balance": balance,
+            },
+        )
 
-# =========================================
-# DEBT REPORT
-# =========================================
+        st.success("Payment Recorded")
 
-elif menu == "Debt Report":
+        receipt = pd.DataFrame(
+            {
+                "Student": [name],
+                "Fee": [fee],
+                "Previous Debt": [previous_debt],
+                "Paid": [amount_paid],
+                "Balance": [balance],
+            }
+        )
 
-    st.header("Students With Debt")
+        st.subheader("School Payment Receipt")
+        st.table(receipt)
 
-    debts = run_query("""
-    SELECT student_id, SUM(balance) as total_debt
-    FROM payments
-    GROUP BY student_id
-    HAVING SUM(balance) > 0
-    """, fetch=True)
+# =========================================================
+# PAYMENT HISTORY
+# =========================================================
+elif menu == "Payment History":
+    st.subheader("Payment Records")
 
-    if debts:
-        df = pd.DataFrame([d._mapping for d in debts])
-        st.dataframe(df)
+    data = run_query(
+        "SELECT * FROM payments ORDER BY id DESC",
+        fetch=True,
+    )
+    df = pd.DataFrame(data)
+    st.dataframe(df)
 
-# =========================================
+    if st.button("Export Excel"):
+        output = BytesIO()
+        df.to_excel(output, index=False)
+        st.download_button(
+            "Download",
+            output.getvalue(),
+            file_name="payments.xlsx",
+        )
+
+    if st.session_state.role == "Admin":
+        delete_id = st.number_input("Delete Payment ID")
+
+        if st.button("Delete Payment"):
+            run_query(
+                "DELETE FROM payments WHERE id=:id",
+                {"id": delete_id},
+            )
+            st.success("Deleted")
+
+# =========================================================
 # REVENUE DASHBOARD
-# =========================================
-
+# =========================================================
 elif menu == "Revenue Dashboard":
+    st.subheader("School Revenue")
 
-    st.header("Total Revenue Per Session")
-
-    revenue = run_query("""
-    SELECT session, SUM(amount_paid) as revenue
+    data = run_query(
+        """
+    SELECT session, SUM(amount_paid)
     FROM payments
     GROUP BY session
-    """, fetch=True)
+    """,
+        fetch=True,
+    )
 
-    if revenue:
-        df = pd.DataFrame([r._mapping for r in revenue])
-        st.bar_chart(df.set_index("session"))
+    df = pd.DataFrame(data, columns=["Session", "Revenue"])
+    st.bar_chart(df.set_index("Session"))
 
-# =========================================
-# SCHOOL FEE SETTINGS
-# =========================================
+# =========================================================
+# DEBT REPORT
+# =========================================================
+elif menu == "Debt Report":
+    st.subheader("Student Debt Report")
 
-elif menu == "School Fee Settings":
+    data = run_query(
+        """
+    SELECT student_name, SUM(balance)
+    FROM payments
+    GROUP BY student_name
+    HAVING SUM(balance) > 0
+    """,
+        fetch=True,
+    )
 
-    if role != "admin":
-        st.warning("Admin only")
-        st.stop()
+    df = pd.DataFrame(data, columns=["Student", "Debt"])
+    st.dataframe(df)
 
-    st.header("Set School Fee")
+# =========================================================
+# PROMOTION SYSTEM
+# =========================================================
+elif menu == "Promote Students":
+    st.subheader("Promote Students")
 
-    session = st.text_input("Session")
-    term = st.selectbox("Term", ["First Term", "Second Term", "Third Term"])
-    section = st.selectbox("Section", ["Nursery", "Primary", "Secondary"])
-    fee = st.number_input("Fee Amount", min_value=0)
+    new_session = st.text_input("New Session")
 
-    if st.button("Save Fee"):
+    if st.button("Promote All Students"):
+        run_query(
+            """
+        UPDATE students
+        SET session=:new_session
+        """,
+            {"new_session": new_session},
+        )
 
-        run_query("""
-        INSERT INTO school_fee_settings
-        (session, term, section, fee_amount)
-        VALUES (:session, :term, :section, :fee)
-        """, {
-            "session": session,
-            "term": term,
-            "section": section,
-            "fee": fee
-        })
-
-        st.success("Fee saved")
-
-# =========================================
-# SCHOOL FEE RECORDS
-# =========================================
-
-elif menu == "School Fee Records":
-
-    st.header("Fee Records")
-
-    fees = run_query("SELECT * FROM school_fee_settings", fetch=True)
-
-    if fees:
-        df = pd.DataFrame([f._mapping for f in fees])
-        st.dataframe(df)
-
-        if role == "admin":
-
-            fee_id = st.selectbox("Delete Fee", df["id"])
-
-            if st.button("Delete Fee"):
-                run_query("DELETE FROM school_fee_settings WHERE id=:id", {"id": fee_id})
-                st.success("Fee deleted")
-                st.rerun()
+        st.success("Students Promoted")
