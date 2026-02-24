@@ -162,20 +162,18 @@ elif menu == "Register Student":
     session = st.text_input("Session e.g 2025/2026")
 
     if st.button("Save Student"):
-        run_query(
-            """
+         run_query("""
         INSERT INTO students
-        (student_id, full_name, student_class, section, session)
-        VALUES (:student_id,:name,:student_class,:section,:session)
-        """,
-            {
-                "student_id": student_id,
-                "name": name,
-                "student_class": student_class,
-                "section": section,
-                "session": session,
-            },
-        )
+        (student_id, full_name, student_class, section, session, admission_session)
+        VALUES
+        (:student_id, :name, :student_class, :section, :session, :session)
+        """, {
+            "student_id": student_id,
+            "name": name,
+            "student_class": student_class,
+            "section": section,
+            "session": session
+})
         st.success("Student Registered")
 
 # =========================================================
